@@ -120,26 +120,67 @@ def handler(job):
         return {"error": str(e)}
 
 
+def fix_torchaudio():
+    """torchaudio uyumsuzluk fix'i"""
+    ref_loader_path = "/app/fish-speech/fish_speech/inference_engine/reference_loader.py"
+    try:
+        with open(ref_loader_path, "r") as f:
+            content = f.read()
+
+        # Eski kodu yeni versiyonla değiştir
+        old = """        try:
+            backends = torchaudio.list_audio_backends()
+            if "ffmpeg" in backends:
+                self.backend = "ffmpeg"
+            else:
+                self.backend = "soundfile"
+        except AttributeError:"""
+
+        new = """        import torchaudio as _torchaudio
+        try:
+            backends = getattr(_torchaudio, "list_audio_backends", lambda: [])()
+            if "ffmpeg" in backends:
+                self.backend = "ffmpeg"
+            else:
+                self.backend = "soundfile"
+        except AttributeError:"""
+
+        if old in content:
+            content = content.replace(old, new)
+            with open(ref_loader_path, "w") as f:
+                f.write(content)
+            print("✅ torchaudio fix uygulandı!")
+        else:
+            print("ℹ️ torchaudio fix zaten uygulanmış veya farklı versiyon")
+    except Exception as e:
+        print(f"⚠️ torchaudio fix hatası: {e}")
+
+
 if __name__ == "__main__":
 
-    # 1. Modeli indir (ilk çalışmada)
-    if not os.path.exists("/app/checkpoints/s2-pro/codec.pth"):
+    # 1. torchaudio fix uygula
+    fix_torchaudio()
+
+    # 2. Modeli indir (ilk çalışmada)
+    MODEL_PATH = "/runpod-volume/checkpoints/s2-pro"
+    if not os.path.exists(f"{MODEL_PATH}/codec.pth"):
         print("⏳ Model indiriliyor (~11GB), lütfen bekleyin...")
+        os.makedirs(MODEL_PATH, exist_ok=True)
         from huggingface_hub import snapshot_download
         snapshot_download(
             repo_id="fishaudio/s2-pro",
-            local_dir="/app/checkpoints/s2-pro"
+            local_dir=MODEL_PATH
         )
         print("✅ Model indirildi!")
     else:
         print("✅ Model zaten mevcut, indirme atlandı!")
 
-    # 2. Fish Speech api_server'ı arka planda başlat
+    # 3. Fish Speech api_server'ı arka planda başlat
     def run_fish_server():
         subprocess.run([
             "python", "/app/fish-speech/tools/api_server.py",
-            "--llama-checkpoint-path", "/app/checkpoints/s2-pro",
-            "--decoder-checkpoint-path", "/app/checkpoints/s2-pro/codec.pth",
+            "--llama-checkpoint-path", MODEL_PATH,
+            "--decoder-checkpoint-path", f"{MODEL_PATH}/codec.pth",
             "--listen", "0.0.0.0:8081",
             "--half"
         ])
@@ -160,7 +201,7 @@ if __name__ == "__main__":
         except:
             print(f"⏳ {(i+1)*15}sn bekleniyor...")
 
-    # 3. Referans sesi yükle
+    # 4. Referans sesi yükle
     if REF_AUDIO_B64:
         ref_bytes = base64.b64decode(REF_AUDIO_B64)
         try:
@@ -175,11 +216,11 @@ if __name__ == "__main__":
     else:
         print("⚠️ Referans ses bulunamadı!")
 
-    # 4. OpenAI wrapper'ı arka planda başlat
+    # 5. OpenAI wrapper'ı arka planda başlat
     openai_thread = threading.Thread(target=run_openai_server, daemon=True)
     openai_thread.start()
     print("✅ OpenAI API hazır: port 8000")
 
-    # 5. RunPod serverless handler başlat
+    # 6. RunPod serverless handler başlat
     print("✅ RunPod handler başlatılıyor...")
     runpod.serverless.start({"handler": handler})
