@@ -15,15 +15,7 @@ RUN git clone https://github.com/fishaudio/fish-speech /app/fish-speech
 RUN cd /app/fish-speech && pip install -e ".[stable]" -q
 
 # Ek paketler
-RUN pip install runpod fastapi uvicorn httpx -q
-
-# Modeli indir (~11GB, build sırasında indirilir)
-RUN python3 -c "\
-from huggingface_hub import snapshot_download; \
-snapshot_download(\
-    repo_id='fishaudio/s2-pro', \
-    local_dir='/app/checkpoints/s2-pro'\
-)"
+RUN pip install runpod fastapi uvicorn httpx huggingface_hub -q
 
 # Handler kopyala
 COPY handler.py /app/handler.py
