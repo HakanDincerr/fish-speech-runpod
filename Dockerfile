@@ -6,6 +6,10 @@ RUN apt-get update && apt-get install -y \
     portaudio19-dev git ffmpeg curl \
     && rm -rf /var/lib/apt/lists/*
 
+# torch versiyonlarını düzelt
+RUN pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 \
+    --index-url https://download.pytorch.org/whl/cu124 -q
+
 RUN git clone https://github.com/fishaudio/fish-speech /app/fish-speech
 RUN cd /app/fish-speech && pip install -e ".[stable]" -q
 
