@@ -9,9 +9,6 @@ RUN apt-get update && apt-get install -y \
 RUN git clone https://github.com/fishaudio/fish-speech /app/fish-speech
 RUN cd /app/fish-speech && pip install -e ".[stable]" -q
 
-COPY fix_torchaudio.sh /app/fix_torchaudio.sh
-RUN chmod +x /app/fix_torchaudio.sh && bash /app/fix_torchaudio.sh
-
 RUN pip install runpod fastapi uvicorn httpx huggingface_hub -q
 
 COPY referans.mp3 /app/referans.mp3
