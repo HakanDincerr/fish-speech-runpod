@@ -9,9 +9,18 @@ import requests
 
 sys.path.insert(0, "/app/fish-speech")
 
-# Ortam değişkenlerinden referans ses
-REF_AUDIO_B64 = os.environ.get("REF_AUDIO_B64", "")
-REF_TEXT = os.environ.get("REF_TEXT", "Merhaba, müşteri hizmetlerine hoş geldiniz. Ben Dijital Asistanınızım ve size yardımcı olmak için buradayım.")
+# Referans sesi dosyadan oku
+_REF_AUDIO_PATH = "/app/referans.mp3"
+if os.path.exists(_REF_AUDIO_PATH):
+    with open(_REF_AUDIO_PATH, "rb") as f:
+        REF_AUDIO_B64 = base64.b64encode(f.read()).decode()
+else:
+    REF_AUDIO_B64 = os.environ.get("REF_AUDIO_B64", "")
+
+REF_TEXT = os.environ.get(
+    "REF_TEXT",
+    "Merhaba iyi günler, size nasıl yardımcı olabilirim. Ben size yardım etmek için buradayım herhangi bir konunuzda size hızlı bir şekilde yardımcı olabilirim, sorularınızı bekliyorum."
+)
 
 # FastAPI OpenAI wrapper
 from fastapi import FastAPI, Request
@@ -138,7 +147,7 @@ if __name__ == "__main__":
     fish_thread = threading.Thread(target=run_fish_server, daemon=True)
     fish_thread.start()
 
-    print("⏳ Fish Speech sunucusu yükleniyor (~90sn)...")
+    print("⏳ Fish Speech sunucusu yükleniyor...")
 
     # Sunucu hazır olana kadar bekle
     for i in range(20):
@@ -155,16 +164,16 @@ if __name__ == "__main__":
     if REF_AUDIO_B64:
         ref_bytes = base64.b64decode(REF_AUDIO_B64)
         try:
-            resp = requests.post(
+            requests.post(
                 "http://127.0.0.1:8081/v1/references/add",
                 data={"id": "default", "text": REF_TEXT},
-                files={"audio": ("ref.wav", ref_bytes, "audio/wav")}
+                files={"audio": ("referans.mp3", ref_bytes, "audio/mpeg")}
             )
             print("✅ Referans ses yüklendi!")
         except Exception as e:
             print(f"⚠️ Referans yüklenemedi: {e}")
     else:
-        print("⚠️ REF_AUDIO_B64 ortam değişkeni boş, referans ses yüklenmedi!")
+        print("⚠️ Referans ses bulunamadı!")
 
     # 4. OpenAI wrapper'ı arka planda başlat
     openai_thread = threading.Thread(target=run_openai_server, daemon=True)
