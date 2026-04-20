@@ -1,7 +1,6 @@
 import runpod
 import base64
 import os
-import torch
 import sys
 import time
 import threading
@@ -22,9 +21,11 @@ import uvicorn
 
 app = FastAPI()
 
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
 
 @app.get("/v1/models")
 async def models():
@@ -37,6 +38,7 @@ async def models():
             "owned_by": "fish-audio"
         }]
     }
+
 
 @app.post("/v1/audio/speech")
 async def speech(request: Request):
@@ -110,7 +112,20 @@ def handler(job):
 
 
 if __name__ == "__main__":
-    # Fish Speech api_server'ı arka planda başlat
+
+    # 1. Modeli indir (ilk çalışmada)
+    if not os.path.exists("/app/checkpoints/s2-pro/codec.pth"):
+        print("⏳ Model indiriliyor (~11GB), lütfen bekleyin...")
+        from huggingface_hub import snapshot_download
+        snapshot_download(
+            repo_id="fishaudio/s2-pro",
+            local_dir="/app/checkpoints/s2-pro"
+        )
+        print("✅ Model indirildi!")
+    else:
+        print("✅ Model zaten mevcut, indirme atlandı!")
+
+    # 2. Fish Speech api_server'ı arka planda başlat
     def run_fish_server():
         subprocess.run([
             "python", "/app/fish-speech/tools/api_server.py",
@@ -123,14 +138,24 @@ if __name__ == "__main__":
     fish_thread = threading.Thread(target=run_fish_server, daemon=True)
     fish_thread.start()
 
-    print("⏳ Fish Speech yükleniyor (~90sn)...")
-    time.sleep(90)
+    print("⏳ Fish Speech sunucusu yükleniyor (~90sn)...")
 
-    # Referansı yükle
+    # Sunucu hazır olana kadar bekle
+    for i in range(20):
+        time.sleep(15)
+        try:
+            r = requests.get("http://127.0.0.1:8081/v1/health", timeout=5)
+            if r.json().get("status") == "ok":
+                print(f"✅ Fish Speech hazır! ({(i+1)*15}sn)")
+                break
+        except:
+            print(f"⏳ {(i+1)*15}sn bekleniyor...")
+
+    # 3. Referans sesi yükle
     if REF_AUDIO_B64:
         ref_bytes = base64.b64decode(REF_AUDIO_B64)
         try:
-            requests.post(
+            resp = requests.post(
                 "http://127.0.0.1:8081/v1/references/add",
                 data={"id": "default", "text": REF_TEXT},
                 files={"audio": ("ref.wav", ref_bytes, "audio/wav")}
@@ -138,11 +163,14 @@ if __name__ == "__main__":
             print("✅ Referans ses yüklendi!")
         except Exception as e:
             print(f"⚠️ Referans yüklenemedi: {e}")
+    else:
+        print("⚠️ REF_AUDIO_B64 ortam değişkeni boş, referans ses yüklenmedi!")
 
-    # OpenAI wrapper'ı arka planda başlat
+    # 4. OpenAI wrapper'ı arka planda başlat
     openai_thread = threading.Thread(target=run_openai_server, daemon=True)
     openai_thread.start()
     print("✅ OpenAI API hazır: port 8000")
 
-    # RunPod handler başlat
+    # 5. RunPod serverless handler başlat
+    print("✅ RunPod handler başlatılıyor...")
     runpod.serverless.start({"handler": handler})
