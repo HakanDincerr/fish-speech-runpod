@@ -10,18 +10,13 @@ RUN apt-get update && apt-get install -y \
 RUN git clone https://github.com/fishaudio/fish-speech /app/fish-speech
 RUN cd /app/fish-speech && pip install -e ".[stable]" -q
 
-# Torch 2.5.1 yükle (torchvision circular import fix)
-RUN pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 \
-    --index-url https://download.pytorch.org/whl/cu124 \
-    --force-reinstall -q
-
-# FlashInfer for torch 2.5
+# FlashInfer for torch 2.4, CUDA 12.4
 RUN pip install flashinfer \
-    -i https://flashinfer.ai/whl/cu124/torch2.5/ -q
+    -i https://flashinfer.ai/whl/cu124/torch2.4/ -q
 
 # SGLang
 RUN pip install "sglang[all]" \
-    --find-links https://flashinfer.ai/whl/cu124/torch2.5/ -q
+    --find-links https://flashinfer.ai/whl/cu124/torch2.4/ -q
 
 # sglang-omni — git clone ile kur
 RUN git clone https://github.com/sgl-project/sglang-omni.git /tmp/sglang-omni && \
