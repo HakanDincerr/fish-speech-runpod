@@ -1,30 +1,20 @@
-FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
+FROM runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04
 
-ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y \
-    python3.12 python3.12-dev python3.12-venv \
-    portaudio19-dev git ffmpeg curl build-essential cmake \
+    portaudio19-dev git ffmpeg curl build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# pip kur
-RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12
-
-# uv kur (hızlı paket yöneticisi)
+# uv kur
 RUN pip install uv -q
 
-# Python 3.12 varsayılan yap
-RUN ln -sf /usr/bin/python3.12 /usr/bin/python3 && \
-    ln -sf /usr/bin/python3.12 /usr/bin/python
-
-# sglang-omni — DOĞRU REPO: sgl-project-dev (dev subdomain!)
-# Kurulum: uv pip install ".[s2pro]" — README'den birebir
+# sglang-omni — DOĞRU REPO: sgl-project-dev
 RUN git clone https://github.com/sgl-project-dev/sglang-omni.git /tmp/sglang-omni && \
     cd /tmp/sglang-omni && \
-    uv pip install ".[s2pro]" --system -v
+    uv pip install ".[s2pro]" --system
 
-# Fish Speech kur
+# Fish Speech
 RUN git clone https://github.com/fishaudio/fish-speech /app/fish-speech && \
     cd /app/fish-speech && \
     uv pip install -e ".[stable]" --system -q
@@ -32,10 +22,7 @@ RUN git clone https://github.com/fishaudio/fish-speech /app/fish-speech && \
 # RunPod + API
 RUN uv pip install runpod fastapi uvicorn httpx huggingface_hub --system -q
 
-# Referans ses
 COPY referans.mp3 /app/referans.mp3
-
-# Handler
 COPY handler.py /app/handler.py
 
 EXPOSE 8000 8080
