@@ -1,3 +1,8 @@
+"""
+Fish Speech S2-Pro + SGLang-Omni handler
+Base: runpod/pytorch:2.4.0 + sgl-project-dev/sglang-omni
+Hedef: ~300-500ms TTFB, H100 SXM
+"""
 import runpod
 import base64
 import os
@@ -9,6 +14,7 @@ import requests
 
 sys.path.insert(0, "/app/fish-speech")
 
+# Referans ses
 _REF_AUDIO_PATH = "/app/referans.mp3"
 if os.path.exists(_REF_AUDIO_PATH):
     with open(_REF_AUDIO_PATH, "rb") as f:
@@ -57,7 +63,11 @@ async def speech(request: Request):
     if not text:
         return JSONResponse({"error": "input is required"}, status_code=400)
 
+    t_start = time.time()
+    first_chunk = True
+
     async def generate():
+        nonlocal first_chunk
         async with httpx.AsyncClient(timeout=60) as client:
             async with client.stream(
                 "POST",
@@ -67,10 +77,13 @@ async def speech(request: Request):
                     "references": [{"audio": ref_audio, "text": ref_text}],
                     "format": "wav",
                     "streaming": True,
-                    "normalize": True,
                 },
             ) as resp:
                 async for chunk in resp.aiter_bytes(2048):
+                    if first_chunk:
+                        ttfb = (time.time() - t_start) * 1000
+                        print(f"⚡ TTFB: {ttfb:.0f}ms | '{text[:40]}'")
+                        first_chunk = False
                     yield chunk
 
     return StreamingResponse(generate(), media_type="audio/wav")
@@ -89,6 +102,7 @@ def handler(job):
     if not text:
         return {"error": "text is required"}
 
+    t_start = time.time()
     try:
         response = requests.post(
             f"http://127.0.0.1:{BACKEND_PORT}/v1/tts",
@@ -97,12 +111,16 @@ def handler(job):
                 "references": [{"audio": ref_audio, "text": ref_text}],
                 "format": "wav",
                 "streaming": False,
-                "normalize": True,
             },
             timeout=60
         )
-        audio_b64 = base64.b64encode(response.content).decode()
-        return {"audio_base64": audio_b64, "format": "wav", "sample_rate": 44100}
+        elapsed = (time.time() - t_start) * 1000
+        print(f"⏱ Toplam: {elapsed:.0f}ms")
+        return {
+            "audio_base64": base64.b64encode(response.content).decode(),
+            "format": "wav",
+            "sample_rate": 44100
+        }
     except Exception as e:
         return {"error": str(e)}
 
@@ -119,41 +137,47 @@ def fix_torchaudio():
             )
             with open(path, "w") as f:
                 f.write(content)
-            print("✅ torchaudio fix uygulandı!")
+            print("✅ torchaudio fix!")
     except Exception as e:
-        print(f"⚠️ fix hatası: {e}")
+        print(f"⚠️ fix: {e}")
 
 
-def start_backend():
-    """Fish Speech + SGLang backend.
-    --use-sglang: token-level streaming → ~300-500ms TTFB
-    --half: fp16 → daha hızlı
-    """
+def start_sglang_backend():
+    """SGLang-Omni S2Pro server"""
+    config_path = "/app/s2pro_tts.yaml"
+    with open(config_path, "w") as f:
+        f.write(f"""model_config:
+  model_type: s2pro
+  model_path: {MODEL_PATH}
+  device: cuda
+  dtype: float16
+
+runtime_config:
+  mem_fraction_static: 0.65
+
+serving_config:
+  host: 0.0.0.0
+  port: {BACKEND_PORT}
+""")
+
     proc = subprocess.Popen(
-        [
-            "python", "/app/fish-speech/tools/api_server.py",
-            "--llama-checkpoint-path", MODEL_PATH,
-            "--decoder-checkpoint-path", f"{MODEL_PATH}/codec.pth",
-            "--listen", f"0.0.0.0:{BACKEND_PORT}",
-            "--half",
-            "--use-sglang",  # SGLang backend → token-level streaming → düşük TTFB
-        ],
+        ["python", "-m", "sglang_omni.launch_server", "--config", config_path],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True
     )
     for line in proc.stdout:
-        print(f"[fish] {line.strip()}")
+        print(f"[sglang] {line.strip()}")
 
 
 def wait_for_backend(timeout=300):
-    print("⏳ SGLang backend bekleniyor...")
+    print("⏳ SGLang-Omni bekleniyor...")
     for i in range(timeout // 10):
         time.sleep(10)
         try:
-            r = requests.get(f"http://127.0.0.1:{BACKEND_PORT}/v1/health", timeout=5)
-            if r.json().get("status") == "ok":
-                print(f"✅ Backend hazır! ({(i+1)*10}sn)")
+            r = requests.get(f"http://127.0.0.1:{BACKEND_PORT}/health", timeout=5)
+            if r.status_code == 200:
+                print(f"✅ SGLang-Omni hazır! ({(i+1)*10}sn)")
                 return True
         except:
             if i % 3 == 0:
@@ -161,29 +185,13 @@ def wait_for_backend(timeout=300):
     return False
 
 
-def load_reference():
-    if not REF_AUDIO_B64:
-        print("⚠️ Referans ses yok!")
-        return
-    ref_bytes = base64.b64decode(REF_AUDIO_B64)
-    try:
-        resp = requests.post(
-            f"http://127.0.0.1:{BACKEND_PORT}/v1/references/add",
-            data={"id": "default", "text": REF_TEXT},
-            files={"audio": ("referans.mp3", ref_bytes, "audio/mpeg")},
-            timeout=30
-        )
-        print(f"✅ Referans ses yüklendi! ({resp.status_code})")
-    except Exception as e:
-        print(f"⚠️ Referans yüklenemedi: {e}")
-
-
 if __name__ == "__main__":
 
     fix_torchaudio()
 
+    # Model indir (yoksa)
     if not os.path.exists(f"{MODEL_PATH}/codec.pth"):
-        print("⏳ Model indiriliyor (~11GB)...")
+        print("⏳ Model indiriliyor...")
         os.makedirs(MODEL_PATH, exist_ok=True)
         from huggingface_hub import snapshot_download
         snapshot_download(repo_id="fishaudio/s2-pro", local_dir=MODEL_PATH)
@@ -191,17 +199,17 @@ if __name__ == "__main__":
     else:
         print("✅ Model mevcut!")
 
-    print("🚀 Fish Speech + SGLang başlatılıyor...")
-    threading.Thread(target=start_backend, daemon=True).start()
+    # SGLang-Omni başlat
+    print("🚀 SGLang-Omni S2Pro başlatılıyor...")
+    threading.Thread(target=start_sglang_backend, daemon=True).start()
 
     if not wait_for_backend():
-        print("❌ Backend başlamadı!")
+        print("❌ SGLang-Omni başlamadı! Log:")
         sys.exit(1)
 
-    load_reference()
-
+    # OpenAI wrapper
     threading.Thread(target=run_openai_server, daemon=True).start()
     print("✅ OpenAI API hazır: port 8000")
 
-    print("✅ RunPod handler başlatılıyor...")
+    # RunPod handler
     runpod.serverless.start({"handler": handler})
