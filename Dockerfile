@@ -6,26 +6,15 @@ RUN apt-get update && apt-get install -y \
     portaudio19-dev ffmpeg curl \
     && rm -rf /var/lib/apt/lists/*
 
-# sglang_omni nerede? Build sırasında bul ve kaydet
-RUN echo "=== Python paths ===" && \
-    find / -name "python3*" -type f 2>/dev/null | grep -v proc | head -20 && \
-    echo "=== sglang_omni location ===" && \
-    find / -name "sglang_omni" -type d 2>/dev/null | grep -v proc && \
-    echo "=== Which python has sglang_omni ===" && \
-    for py in /usr/bin/python3 /usr/bin/python3.12 /opt/conda/bin/python3 /usr/local/bin/python3; do \
-        if [ -f "$py" ]; then \
-            $py -c "import sglang_omni; print('FOUND:', '$py', sglang_omni.__file__)" 2>/dev/null && break; \
-        fi; \
-    done
+# sglang_omni hangi python'da? Build sırasında yaz.
+RUN python3 -c "import sglang_omni; print(sglang_omni.__file__)" > /app/sglang_omni_path.txt 2>&1 || \
+    python3.12 -c "import sglang_omni; print(sglang_omni.__file__)" >> /app/sglang_omni_path.txt 2>&1 || \
+    echo "NOT_FOUND" > /app/sglang_omni_path.txt
 
-# Doğru python path'ini dosyaya yaz — handler runtime'da okuyacak
-RUN for py in /usr/bin/python3 /usr/bin/python3.12 /opt/conda/bin/python3 /usr/local/bin/python3 $(which python3 2>/dev/null); do \
-        if [ -f "$py" ] && $py -c "import sglang_omni" 2>/dev/null; then \
-            echo $py > /app/sglang_python_path.txt && \
-            echo "Saved: $py" && break; \
-        fi; \
-    done && \
-    cat /app/sglang_python_path.txt || echo "NOT FOUND" > /app/sglang_python_path.txt
+RUN python3 -c "import sys; open('/app/sglang_python.txt','w').write(sys.executable)" 2>/dev/null || \
+    echo "/usr/bin/python3" > /app/sglang_python.txt
+
+RUN cat /app/sglang_omni_path.txt && cat /app/sglang_python.txt
 
 # Fish Speech
 RUN git clone https://github.com/fishaudio/fish-speech /app/fish-speech && \
