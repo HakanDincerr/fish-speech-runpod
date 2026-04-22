@@ -14,6 +14,14 @@ RUN git clone https://github.com/sgl-project-dev/sglang-omni.git /tmp/sglang-omn
     cd /tmp/sglang-omni && \
     uv pip install ".[s2pro]" --system
 
+# torchvision + torch uyumunu düzelt (sglang-omni bunları bozuyor)
+RUN pip install \
+    torch==2.4.0 \
+    torchvision==0.19.0 \
+    torchaudio==2.4.0 \
+    --index-url https://download.pytorch.org/whl/cu124 \
+    --force-reinstall -q
+
 # Fish Speech
 RUN git clone https://github.com/fishaudio/fish-speech /app/fish-speech && \
     cd /app/fish-speech && \
