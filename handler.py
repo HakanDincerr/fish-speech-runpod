@@ -1,7 +1,7 @@
 """
 Fish Speech S2-Pro + SGLang-Omni
-SGLang-Omni izole venv'de çalışıyor: /opt/sglang-venv
-Hedef: H100 SXM'de ~150-250ms TTFA, streaming ile 300-500ms kullanıcı deneyimi
+Base image: frankleeeee/sglang-omni:dev
+sglang_omni sistem Python'unda kurulu — path'i dinamik bul.
 """
 import runpod
 import base64
@@ -15,7 +15,6 @@ import tempfile
 
 MODEL_PATH = os.environ.get("MODEL_PATH", "/runpod-volume/checkpoints/s2-pro")
 BACKEND_PORT = 8080
-SGLANG_PYTHON = "/opt/sglang-venv/bin/python"
 
 # Referans ses
 REF_AUDIO_FILE = "/app/referans.mp3"
@@ -31,9 +30,6 @@ REF_TEXT = os.environ.get(
     "buradayım herhangi bir konunuzda size hızlı bir şekilde yardımcı olabilirim, "
     "sorularınızı bekliyorum."
 )
-
-# sglang-omni config — repo içindeki örnek config'i kullan
-SGLANG_CONFIG = "/tmp/sglang-omni/examples/configs/s2pro_tts.yaml"
 
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse, JSONResponse
@@ -141,20 +137,73 @@ def handler(job):
         return {"error": str(e)}
 
 
+def find_sglang_python():
+    """sglang_omni'nin kurulu olduğu Python'u bul"""
+    candidates = [
+        sys.executable,
+        "/usr/bin/python3",
+        "/usr/bin/python3.12",
+        "/usr/local/bin/python3",
+        "/usr/local/bin/python3.12",
+        "/opt/conda/bin/python3",
+        "/opt/conda/bin/python",
+    ]
+    for py in candidates:
+        if not os.path.exists(py):
+            continue
+        result = subprocess.run(
+            [py, "-c", "import sglang_omni; print(sglang_omni.__file__)"],
+            capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            print(f"✅ sglang_omni: {py} → {result.stdout.strip()}")
+            return py
+    # Hiçbirinde bulunamazsa which ile ara
+    result = subprocess.run(["find", "/", "-name", "sglang_omni", "-type", "d", "2>/dev/null"],
+                            capture_output=True, text=True)
+    print(f"⚠️ sglang_omni bulunamadı. sys.executable kullanılıyor: {sys.executable}")
+    return sys.executable
+
+
+def find_sglang_config():
+    """s2pro_tts.yaml config dosyasını bul veya oluştur"""
+    candidates = [
+        "/tmp/sglang-omni/examples/configs/s2pro_tts.yaml",
+        "/workspace/sglang-omni/examples/configs/s2pro_tts.yaml",
+        "/app/sglang-omni/examples/configs/s2pro_tts.yaml",
+    ]
+    # Önce bul
+    for path in candidates:
+        if os.path.exists(path):
+            print(f"✅ Config bulundu: {path}")
+            return path
+
+    # Yoksa oluştur
+    config_path = "/tmp/s2pro_tts.yaml"
+    with open(config_path, "w") as f:
+        f.write(f"""model_path: {MODEL_PATH}
+port: {BACKEND_PORT}
+host: 0.0.0.0
+dtype: float16
+mem_fraction_static: 0.65
+""")
+    print(f"✅ Config oluşturuldu: {config_path}")
+    return config_path
+
+
 def start_sglang_backend():
-    """
-    SGLang-Omni'yi izole venv'deki Python ile başlat.
-    Torchvision mismatch yok çünkü kendi ortamında.
-    """
-    print(f"[sglang] Python: {SGLANG_PYTHON}")
-    print(f"[sglang] Config: {SGLANG_CONFIG}")
+    python_bin = find_sglang_python()
+    config_path = find_sglang_config()
+
+    print(f"[sglang] Python: {python_bin}")
+    print(f"[sglang] Config: {config_path}")
     print(f"[sglang] Model: {MODEL_PATH}")
 
     proc = subprocess.Popen(
         [
-            SGLANG_PYTHON, "-m", "sglang_omni.cli.cli", "serve",
+            python_bin, "-m", "sglang_omni.cli.cli", "serve",
             "--model-path", MODEL_PATH,
-            "--config", SGLANG_CONFIG,
+            "--config", config_path,
             "--port", str(BACKEND_PORT),
             "--host", "0.0.0.0",
         ],
@@ -193,15 +242,13 @@ if __name__ == "__main__":
     else:
         print("✅ Model mevcut!")
 
-    # SGLang-Omni başlat (izole venv)
-    print("🚀 SGLang-Omni başlatılıyor (izole venv)...")
+    print("🚀 SGLang-Omni başlatılıyor...")
     threading.Thread(target=start_sglang_backend, daemon=True).start()
 
     if not wait_for_backend():
         print("❌ SGLang-Omni başlamadı!")
         sys.exit(1)
 
-    # OpenAI wrapper (port 8000)
     threading.Thread(target=run_openai_server, daemon=True).start()
     print("✅ OpenAI API hazır: port 8000")
 
