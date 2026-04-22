@@ -139,10 +139,27 @@ def handler(job):
 
 def find_sglang_python():
     """sglang_omni'nin kurulu olduğu Python'u bul"""
+
+    # 1. Build sırasında yazılan path dosyasını oku
+    path_file = "/app/sglang_python_path.txt"
+    if os.path.exists(path_file):
+        with open(path_file) as f:
+            saved = f.read().strip()
+        if saved and saved != "NOT FOUND" and os.path.exists(saved):
+            result = subprocess.run(
+                [saved, "-c", "import sglang_omni; print(sglang_omni.__file__)"],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                print(f"✅ sglang_omni (saved): {saved} → {result.stdout.strip()}")
+                return saved
+
+    # 2. Runtime'da tüm python binary'leri tara
     candidates = [
         sys.executable,
         "/usr/bin/python3",
         "/usr/bin/python3.12",
+        "/usr/bin/python3.11",
         "/usr/local/bin/python3",
         "/usr/local/bin/python3.12",
         "/opt/conda/bin/python3",
@@ -158,10 +175,17 @@ def find_sglang_python():
         if result.returncode == 0:
             print(f"✅ sglang_omni: {py} → {result.stdout.strip()}")
             return py
-    # Hiçbirinde bulunamazsa which ile ara
-    result = subprocess.run(["find", "/", "-name", "sglang_omni", "-type", "d", "2>/dev/null"],
-                            capture_output=True, text=True)
-    print(f"⚠️ sglang_omni bulunamadı. sys.executable kullanılıyor: {sys.executable}")
+
+    # 3. find ile ara
+    result = subprocess.run(
+        ["find", "/", "-path", "*/sglang_omni/__init__.py", "-not", "-path", "*/proc/*"],
+        capture_output=True, text=True, timeout=10
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        init_path = result.stdout.strip().split("\n")[0]
+        print(f"⚠️ sglang_omni dosya: {init_path}")
+
+    print(f"⚠️ sglang_omni bulunamadı. sys.executable: {sys.executable}")
     return sys.executable
 
 
