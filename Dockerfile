@@ -6,19 +6,24 @@ RUN apt-get update && apt-get install -y \
     portaudio19-dev git ffmpeg curl build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# uv kur (sistem pip'ine)
+# uv kur
 RUN pip install uv -q
 
-# sglang-omni için izole venv oluştur
+# sglang-omni venv
 RUN python3.11 -m venv /opt/sglang-venv
 
-# venv içine uv kur, sonra sglang-omni kur
-RUN git clone https://github.com/sgl-project-dev/sglang-omni.git /tmp/sglang-omni && \
-    cd /tmp/sglang-omni && \
-    /opt/sglang-venv/bin/pip install uv -q && \
-    /opt/sglang-venv/bin/uv pip install ".[s2pro]"
+# Verbose install — tam hatayı görmek için 2>&1 olmadan
+RUN git clone https://github.com/sgl-project-dev/sglang-omni.git /tmp/sglang-omni
 
-# Fish Speech — sistem Python
+# Önce pyproject.toml'u göster
+RUN cat /tmp/sglang-omni/pyproject.toml | head -80
+
+# s2pro extra'sını verbose kur
+RUN cd /tmp/sglang-omni && \
+    /opt/sglang-venv/bin/pip install --upgrade pip -q && \
+    /opt/sglang-venv/bin/pip install ".[s2pro]" -v 2>&1 | tail -50 || true
+
+# Fish Speech
 RUN git clone https://github.com/fishaudio/fish-speech /app/fish-speech && \
     cd /app/fish-speech && \
     uv pip install -e ".[stable]" --system -q
