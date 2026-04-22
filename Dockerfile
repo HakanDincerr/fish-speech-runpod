@@ -4,26 +4,23 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y \
     portaudio19-dev git ffmpeg curl build-essential \
+    software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa -y \
+    && apt-get update \
+    && apt-get install -y python3.12 python3.12-venv python3.12-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # uv kur
 RUN pip install uv -q
 
-# sglang-omni venv
-RUN python3.11 -m venv /opt/sglang-venv
+# sglang-omni için Python 3.12 venv (README'deki gibi)
+RUN python3.12 -m venv /opt/sglang-venv
+RUN git clone https://github.com/sgl-project-dev/sglang-omni.git /tmp/sglang-omni && \
+    cd /tmp/sglang-omni && \
+    /opt/sglang-venv/bin/pip install uv -q && \
+    /opt/sglang-venv/bin/uv pip install ".[s2pro]"
 
-# Verbose install — tam hatayı görmek için 2>&1 olmadan
-RUN git clone https://github.com/sgl-project-dev/sglang-omni.git /tmp/sglang-omni
-
-# Önce pyproject.toml'u göster
-RUN cat /tmp/sglang-omni/pyproject.toml | head -80
-
-# s2pro extra'sını verbose kur
-RUN cd /tmp/sglang-omni && \
-    /opt/sglang-venv/bin/pip install --upgrade pip -q && \
-    /opt/sglang-venv/bin/pip install ".[s2pro]" -v 2>&1 | tail -50 || true
-
-# Fish Speech
+# Fish Speech — sistem Python (3.11)
 RUN git clone https://github.com/fishaudio/fish-speech /app/fish-speech && \
     cd /app/fish-speech && \
     uv pip install -e ".[stable]" --system -q
