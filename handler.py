@@ -1,7 +1,6 @@
 """
 Fish Speech S2-Pro + SGLang-Omni handler
-Doğru komut: python -m sglang_omni.cli.cli serve
-API: /v1/audio/speech — references audio_path (dosya yolu)
+sglang_omni hangi python'da kuruluysa onu bul ve kullan
 """
 import runpod
 import base64
@@ -15,9 +14,8 @@ import tempfile
 
 sys.path.insert(0, "/app/fish-speech")
 
-# Referans ses — dosyaya yaz
 _REF_AUDIO_PATH = "/app/referans.mp3"
-REF_AUDIO_FILE = "/app/referans.mp3"  # sglang_omni audio_path olarak kullanır
+REF_AUDIO_FILE = "/app/referans.mp3"
 
 if os.path.exists(_REF_AUDIO_PATH):
     with open(_REF_AUDIO_PATH, "rb") as f:
@@ -65,7 +63,6 @@ async def speech(request: Request):
     text = body.get("input", "")
     ref_text = body.get("ref_text", REF_TEXT)
 
-    # Referans ses: base64 geldiyse dosyaya yaz
     ref_audio_b64 = body.get("ref_audio", None)
     if ref_audio_b64:
         tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
@@ -89,12 +86,7 @@ async def speech(request: Request):
                 f"http://127.0.0.1:{BACKEND_PORT}/v1/audio/speech",
                 json={
                     "input": text,
-                    "references": [
-                        {
-                            "audio_path": ref_audio_file,
-                            "text": ref_text
-                        }
-                    ],
+                    "references": [{"audio_path": ref_audio_file, "text": ref_text}],
                 },
             ) as resp:
                 async for chunk in resp.aiter_bytes(2048):
@@ -119,7 +111,6 @@ def handler(job):
     if not text:
         return {"error": "text is required"}
 
-    # Referans ses
     ref_audio_b64 = job_input.get("ref_audio", None)
     if ref_audio_b64:
         tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
@@ -150,6 +141,30 @@ def handler(job):
         return {"error": str(e)}
 
 
+def find_python_with_sglang():
+    """sglang_omni'nin kurulu olduğu python'u bul"""
+    candidates = [
+        "/usr/local/bin/python3",
+        "/usr/local/bin/python",
+        "/usr/bin/python3.11",
+        "/usr/bin/python3",
+        sys.executable,
+    ]
+    for py in candidates:
+        if not os.path.exists(py):
+            continue
+        result = subprocess.run(
+            [py, "-c", "import sglang_omni; print(sglang_omni.__file__)"],
+            capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            print(f"✅ sglang_omni bulundu: {py} → {result.stdout.strip()}")
+            return py
+    # Bulamazsak mevcut python'u dene
+    print(f"⚠️ sglang_omni bulunamadı, {sys.executable} deneniyor")
+    return sys.executable
+
+
 def fix_torchaudio():
     path = "/app/fish-speech/fish_speech/inference_engine/reference_loader.py"
     try:
@@ -168,23 +183,15 @@ def fix_torchaudio():
 
 
 def start_sglang_backend():
-    """
-    Doğru komut (README'den):
-    python -m sglang_omni.cli.cli serve \
-        --model-path fishaudio/s2-pro \
-        --config examples/configs/s2pro_tts.yaml \
-        --port 8080
-    """
-    # Config dosyası sglang-omni reposunda — klonlandığı yerde arayalım
+    python_bin = find_python_with_sglang()
+
     config_candidates = [
         "/tmp/sglang-omni/examples/configs/s2pro_tts.yaml",
         "/app/s2pro_tts.yaml",
     ]
-    config_path = next((p for p in config_candidates if os.path.exists(p)), None)
+    config_path = next((p for p in config_candidates if os.path.exists(p)), "/app/s2pro_tts.yaml")
 
-    if not config_path:
-        # Config yoksa manuel oluştur
-        config_path = "/app/s2pro_tts.yaml"
+    if not os.path.exists(config_path):
         with open(config_path, "w") as f:
             f.write(f"""model_path: {MODEL_PATH}
 port: {BACKEND_PORT}
@@ -193,11 +200,12 @@ dtype: float16
 mem_fraction_static: 0.65
 """)
 
+    print(f"[sglang] Python: {python_bin}")
     print(f"[sglang] Config: {config_path}")
 
     proc = subprocess.Popen(
         [
-            "python", "-m", "sglang_omni.cli.cli", "serve",
+            python_bin, "-m", "sglang_omni.cli.cli", "serve",
             "--model-path", MODEL_PATH,
             "--config", config_path,
             "--port", str(BACKEND_PORT),
@@ -230,7 +238,6 @@ if __name__ == "__main__":
 
     fix_torchaudio()
 
-    # Model indir (yoksa)
     if not os.path.exists(f"{MODEL_PATH}/codec.pth"):
         print("⏳ Model indiriliyor...")
         os.makedirs(MODEL_PATH, exist_ok=True)
@@ -240,7 +247,6 @@ if __name__ == "__main__":
     else:
         print("✅ Model mevcut!")
 
-    # SGLang-Omni başlat
     print("🚀 SGLang-Omni S2Pro başlatılıyor...")
     threading.Thread(target=start_sglang_backend, daemon=True).start()
 
@@ -248,7 +254,6 @@ if __name__ == "__main__":
         print("❌ SGLang-Omni başlamadı!")
         sys.exit(1)
 
-    # OpenAI wrapper
     threading.Thread(target=run_openai_server, daemon=True).start()
     print("✅ OpenAI API hazır: port 8000")
 
