@@ -9,25 +9,18 @@ RUN apt-get update && apt-get install -y \
 # uv kur
 RUN pip install uv -q
 
-# sglang-omni — DOĞRU REPO: sgl-project-dev
+# sglang-omni için izole venv — sistem torch/torchvision'a dokunmaz
+RUN uv venv /opt/sglang-venv -p python3.11
 RUN git clone https://github.com/sgl-project-dev/sglang-omni.git /tmp/sglang-omni && \
     cd /tmp/sglang-omni && \
-    uv pip install ".[s2pro]" --system
+    /opt/sglang-venv/bin/uv pip install ".[s2pro]"
 
-# torchvision + torch uyumunu düzelt (sglang-omni bunları bozuyor)
-RUN pip install \
-    torch==2.4.0 \
-    torchvision==0.19.0 \
-    torchaudio==2.4.0 \
-    --index-url https://download.pytorch.org/whl/cu124 \
-    --force-reinstall -q
-
-# Fish Speech
+# Fish Speech — sistem Python'una kur (handler için)
 RUN git clone https://github.com/fishaudio/fish-speech /app/fish-speech && \
     cd /app/fish-speech && \
     uv pip install -e ".[stable]" --system -q
 
-# RunPod + API
+# RunPod + API — sistem Python
 RUN uv pip install runpod fastapi uvicorn httpx huggingface_hub --system -q
 
 COPY referans.mp3 /app/referans.mp3
