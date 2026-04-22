@@ -1,7 +1,7 @@
 """
 Fish Speech S2-Pro + SGLang-Omni handler
-Base: runpod/pytorch:2.4.0 + sgl-project-dev/sglang-omni
-Hedef: ~300-500ms TTFB, H100 SXM
+Doğru komut: python -m sglang_omni.cli.cli serve
+API: /v1/audio/speech — references audio_path (dosya yolu)
 """
 import runpod
 import base64
@@ -11,16 +11,22 @@ import time
 import threading
 import subprocess
 import requests
+import tempfile
 
 sys.path.insert(0, "/app/fish-speech")
 
-# Referans ses
+# Referans ses — dosyaya yaz
 _REF_AUDIO_PATH = "/app/referans.mp3"
+REF_AUDIO_FILE = "/app/referans.mp3"  # sglang_omni audio_path olarak kullanır
+
 if os.path.exists(_REF_AUDIO_PATH):
     with open(_REF_AUDIO_PATH, "rb") as f:
         REF_AUDIO_B64 = base64.b64encode(f.read()).decode()
 else:
     REF_AUDIO_B64 = os.environ.get("REF_AUDIO_B64", "")
+    if REF_AUDIO_B64:
+        with open(REF_AUDIO_FILE, "wb") as f:
+            f.write(base64.b64decode(REF_AUDIO_B64))
 
 REF_TEXT = os.environ.get(
     "REF_TEXT",
@@ -57,8 +63,17 @@ async def models():
 async def speech(request: Request):
     body = await request.json()
     text = body.get("input", "")
-    ref_audio = body.get("ref_audio", REF_AUDIO_B64)
     ref_text = body.get("ref_text", REF_TEXT)
+
+    # Referans ses: base64 geldiyse dosyaya yaz
+    ref_audio_b64 = body.get("ref_audio", None)
+    if ref_audio_b64:
+        tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+        tmp.write(base64.b64decode(ref_audio_b64))
+        tmp.close()
+        ref_audio_file = tmp.name
+    else:
+        ref_audio_file = REF_AUDIO_FILE
 
     if not text:
         return JSONResponse({"error": "input is required"}, status_code=400)
@@ -71,12 +86,15 @@ async def speech(request: Request):
         async with httpx.AsyncClient(timeout=60) as client:
             async with client.stream(
                 "POST",
-                f"http://127.0.0.1:{BACKEND_PORT}/v1/tts",
+                f"http://127.0.0.1:{BACKEND_PORT}/v1/audio/speech",
                 json={
-                    "text": text,
-                    "references": [{"audio": ref_audio, "text": ref_text}],
-                    "format": "wav",
-                    "streaming": True,
+                    "input": text,
+                    "references": [
+                        {
+                            "audio_path": ref_audio_file,
+                            "text": ref_text
+                        }
+                    ],
                 },
             ) as resp:
                 async for chunk in resp.aiter_bytes(2048):
@@ -96,21 +114,28 @@ def run_openai_server():
 def handler(job):
     job_input = job["input"]
     text = job_input.get("text", "")
-    ref_audio = job_input.get("ref_audio", REF_AUDIO_B64)
     ref_text = job_input.get("ref_text", REF_TEXT)
 
     if not text:
         return {"error": "text is required"}
 
+    # Referans ses
+    ref_audio_b64 = job_input.get("ref_audio", None)
+    if ref_audio_b64:
+        tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+        tmp.write(base64.b64decode(ref_audio_b64))
+        tmp.close()
+        ref_audio_file = tmp.name
+    else:
+        ref_audio_file = REF_AUDIO_FILE
+
     t_start = time.time()
     try:
         response = requests.post(
-            f"http://127.0.0.1:{BACKEND_PORT}/v1/tts",
+            f"http://127.0.0.1:{BACKEND_PORT}/v1/audio/speech",
             json={
-                "text": text,
-                "references": [{"audio": ref_audio, "text": ref_text}],
-                "format": "wav",
-                "streaming": False,
+                "input": text,
+                "references": [{"audio_path": ref_audio_file, "text": ref_text}],
             },
             timeout=60
         )
@@ -143,25 +168,41 @@ def fix_torchaudio():
 
 
 def start_sglang_backend():
-    """SGLang-Omni S2Pro server"""
-    config_path = "/app/s2pro_tts.yaml"
-    with open(config_path, "w") as f:
-        f.write(f"""model_config:
-  model_type: s2pro
-  model_path: {MODEL_PATH}
-  device: cuda
-  dtype: float16
+    """
+    Doğru komut (README'den):
+    python -m sglang_omni.cli.cli serve \
+        --model-path fishaudio/s2-pro \
+        --config examples/configs/s2pro_tts.yaml \
+        --port 8080
+    """
+    # Config dosyası sglang-omni reposunda — klonlandığı yerde arayalım
+    config_candidates = [
+        "/tmp/sglang-omni/examples/configs/s2pro_tts.yaml",
+        "/app/s2pro_tts.yaml",
+    ]
+    config_path = next((p for p in config_candidates if os.path.exists(p)), None)
 
-runtime_config:
-  mem_fraction_static: 0.65
-
-serving_config:
-  host: 0.0.0.0
-  port: {BACKEND_PORT}
+    if not config_path:
+        # Config yoksa manuel oluştur
+        config_path = "/app/s2pro_tts.yaml"
+        with open(config_path, "w") as f:
+            f.write(f"""model_path: {MODEL_PATH}
+port: {BACKEND_PORT}
+host: 0.0.0.0
+dtype: float16
+mem_fraction_static: 0.65
 """)
 
+    print(f"[sglang] Config: {config_path}")
+
     proc = subprocess.Popen(
-        ["python", "-m", "sglang_omni.launch_server", "--config", config_path],
+        [
+            "python", "-m", "sglang_omni.cli.cli", "serve",
+            "--model-path", MODEL_PATH,
+            "--config", config_path,
+            "--port", str(BACKEND_PORT),
+            "--host", "0.0.0.0",
+        ],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True
@@ -204,12 +245,11 @@ if __name__ == "__main__":
     threading.Thread(target=start_sglang_backend, daemon=True).start()
 
     if not wait_for_backend():
-        print("❌ SGLang-Omni başlamadı! Log:")
+        print("❌ SGLang-Omni başlamadı!")
         sys.exit(1)
 
     # OpenAI wrapper
     threading.Thread(target=run_openai_server, daemon=True).start()
     print("✅ OpenAI API hazır: port 8000")
 
-    # RunPod handler
     runpod.serverless.start({"handler": handler})
