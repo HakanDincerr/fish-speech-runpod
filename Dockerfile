@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu24.04
+FROM nvidia/cuda:12.6.3-cudnn-devel-ubuntu24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /app
@@ -11,9 +11,9 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # pip + uv
-RUN python3.12 -m pip install uv -q
+RUN python3.12 -m pip install uv --break-system-packages -q
 
-# sglang-omni — Python 3.12 venv (README'deki gibi)
+# sglang-omni için Python 3.12 venv
 RUN python3.12 -m venv /opt/sglang-venv && \
     /opt/sglang-venv/bin/pip install uv -q
 
@@ -21,7 +21,14 @@ RUN git clone https://github.com/sgl-project-dev/sglang-omni.git /tmp/sglang-omn
     cd /tmp/sglang-omni && \
     /opt/sglang-venv/bin/uv pip install ".[s2pro]"
 
-# Fish Speech — sistem Python 3.12
+# PyTorch — Fish Speech için
+RUN /opt/sglang-venv/bin/pip install uv -q
+RUN uv pip install \
+    torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 \
+    --index-url https://download.pytorch.org/whl/cu124 \
+    --system -q
+
+# Fish Speech
 RUN git clone https://github.com/fishaudio/fish-speech /app/fish-speech && \
     cd /app/fish-speech && \
     uv pip install -e ".[stable]" --system -q
