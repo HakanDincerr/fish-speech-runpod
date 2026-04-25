@@ -15,17 +15,17 @@ RUN git clone https://github.com/sgl-project-dev/sglang-omni.git /workspace/sgla
 
 RUN pip install sgl-kernel --upgrade -q
 
-# transformers yuksel — AutoProcessor ve diger yeni API'ler icin
-RUN pip install transformers --upgrade -q
-
-COPY patch_hf.py /tmp/patch_hf.py
-RUN python3.11 /tmp/patch_hf.py
-
 RUN git clone https://github.com/fishaudio/fish-speech /app/fish-speech && \
     cd /app/fish-speech && \
     uv pip install -e ".[stable]" --system -q
 
 RUN uv pip install runpod fastapi uvicorn httpx huggingface_hub --system -q
+
+# transformers EN SON yuksel - baska hicbir sey bozmasin
+RUN pip install transformers --upgrade -q
+
+COPY patch_hf.py /tmp/patch_hf.py
+RUN python3.11 /tmp/patch_hf.py
 
 COPY referans.mp3 /app/referans.mp3
 COPY handler.py /app/handler.py
