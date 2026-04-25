@@ -21,7 +21,6 @@ RUN git clone https://github.com/fishaudio/fish-speech /app/fish-speech && \
 
 RUN uv pip install runpod fastapi uvicorn httpx huggingface_hub --system -q
 
-# transformers EN SON yuksel - baska hicbir sey bozmasin
 RUN pip install transformers --upgrade -q
 
 COPY patch_hf.py /tmp/patch_hf.py
