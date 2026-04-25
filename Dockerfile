@@ -1,34 +1,35 @@
-FROM frankleeeee/sglang-omni:dev
+FROM runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04
 
 WORKDIR /app
 
+# libnuma ve sistem bağımlılıkları — sgl_kernel SM90 için zorunlu
 RUN apt-get update && apt-get install -y \
-    portaudio19-dev ffmpeg curl \
+    libnuma1 libnuma-dev \
+    portaudio19-dev git ffmpeg curl build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# sglang_omni hangi python'da? Build sırasında yaz.
-RUN python3 -c "import sglang_omni; print(sglang_omni.__file__)" > /app/sglang_omni_path.txt 2>&1 || \
-    python3.12 -c "import sglang_omni; print(sglang_omni.__file__)" >> /app/sglang_omni_path.txt 2>&1 || \
-    echo "NOT_FOUND" > /app/sglang_omni_path.txt
+# uv kur
+RUN pip install uv -q
 
-RUN python3 -c "import sys; open('/app/sglang_python.txt','w').write(sys.executable)" 2>/dev/null || \
-    echo "/usr/bin/python3" > /app/sglang_python.txt
+# sglang-omni kur (doğru repo)
+RUN git clone https://github.com/sgl-project-dev/sglang-omni.git /workspace/sglang-omni && \
+    cd /workspace/sglang-omni && \
+    uv pip install ".[s2pro]" --system
 
-RUN cat /app/sglang_omni_path.txt && cat /app/sglang_python.txt
+# sgl_kernel SM90 için yeniden kur (libnuma artık mevcut)
+RUN pip install sgl-kernel --upgrade -q
 
-# Fish Speech
+# Fish Speech kur
 RUN git clone https://github.com/fishaudio/fish-speech /app/fish-speech && \
-    cd /app/fish-speech && pip install -e . --no-deps -q && \
-    pip install cachetools einops hydra-core loralib natsort \
-    pyrootutils rich silero-vad vector-quantize-pytorch vocos \
-    zstandard -q
+    cd /app/fish-speech && \
+    uv pip install -e ".[stable]" --system -q
 
 # RunPod + API
-RUN pip install runpod fastapi uvicorn httpx huggingface_hub -q
+RUN uv pip install runpod fastapi uvicorn httpx huggingface_hub --system -q
 
 COPY referans.mp3 /app/referans.mp3
 COPY handler.py /app/handler.py
 
 EXPOSE 8000 8080
 
-CMD ["python3", "-u", "/app/handler.py"]
+CMD ["python3.11", "-u", "/app/handler.py"]
