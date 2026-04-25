@@ -2,7 +2,7 @@ FROM runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04
 
 WORKDIR /app
 
-# libnuma ve sistem bağımlılıkları — sgl_kernel SM90 için zorunlu
+# Sistem bağımlılıkları
 RUN apt-get update && apt-get install -y \
     libnuma1 libnuma-dev \
     portaudio19-dev git ffmpeg curl build-essential \
@@ -11,12 +11,18 @@ RUN apt-get update && apt-get install -y \
 # uv kur
 RUN pip install uv -q
 
-# sglang-omni kur (doğru repo)
+# sglang-omni kur — bu torch 2.9.1 + torchvision 0.24.1 getirecek
 RUN git clone https://github.com/sgl-project-dev/sglang-omni.git /workspace/sglang-omni && \
     cd /workspace/sglang-omni && \
     uv pip install ".[s2pro]" --system
 
-# sgl_kernel SM90 için yeniden kur (libnuma artık mevcut)
+# torchvision NMS binary uyumsuzluğunu düzelt:
+# sglang-omni'nin kurduğu torch 2.9.1 ile uyumlu torchvision kur
+RUN pip install torch==2.9.1 torchvision==0.24.1 torchaudio==2.9.1 \
+    --index-url https://download.pytorch.org/whl/cu124 \
+    --force-reinstall -q
+
+# sgl_kernel yeniden kur (libnuma artık mevcut, torch 2.9.1 ile uyumlu)
 RUN pip install sgl-kernel --upgrade -q
 
 # Fish Speech kur
