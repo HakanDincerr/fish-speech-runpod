@@ -15,6 +15,9 @@ RUN git clone https://github.com/sgl-project-dev/sglang-omni.git /workspace/sgla
 
 RUN pip install sgl-kernel --upgrade -q
 
+# transformers yuksel — AutoProcessor ve diger yeni API'ler icin
+RUN pip install transformers --upgrade -q
+
 COPY patch_hf.py /tmp/patch_hf.py
 RUN python3.11 /tmp/patch_hf.py
 
