@@ -15,7 +15,7 @@ RUN git clone https://github.com/sgl-project-dev/sglang-omni.git /workspace/sgla
 
 RUN pip install sgl-kernel --upgrade -q
 
-RUN echo 'from contextlib import contextmanager\nimport logging\nlogger = logging.getLogger(__name__)\n@contextmanager\ndef no_init_weights(_enable=True):\n    yield\n' \
+RUN printf 'from contextlib import contextmanager\nimport logging\nlogger = logging.getLogger(__name__)\n\n@contextmanager\ndef no_init_weights(_enable=True):\n    yield\n' \
     > /usr/local/lib/python3.11/dist-packages/sglang_omni/utils/hf.py
 
 RUN git clone https://github.com/fishaudio/fish-speech /app/fish-speech && \
