@@ -15,20 +15,8 @@ RUN git clone https://github.com/sgl-project-dev/sglang-omni.git /workspace/sgla
 
 RUN pip install sgl-kernel --upgrade -q
 
-# hf.py'deki sadece transformers import satirini patch et, diger fonksiyonlar kalsin
-RUN cat > /tmp/fix_hf.py << 'PYEOF'
-import re
-path = '/usr/local/lib/python3.11/dist-packages/sglang_omni/utils/hf.py'
-with open(path) as f:
-    content = f.read()
-stub = 'from contextlib import contextmanager\n\n@contextmanager\ndef no_init_weights(_enable=True):\n    yield\n\n'
-content = re.sub(r'try:\s*\n\s*from transformers.*?no_init_weights.*?\n.*?no_init_weights', stub, content, flags=re.DOTALL)
-with open(path, 'w') as f:
-    f.write(content)
-print('hf.py patched!')
-PYEOF
-
-RUN python3.11 /tmp/fix_hf.py
+COPY patch_hf.py /tmp/patch_hf.py
+RUN python3.11 /tmp/patch_hf.py
 
 RUN git clone https://github.com/fishaudio/fish-speech /app/fish-speech && \
     cd /app/fish-speech && \
