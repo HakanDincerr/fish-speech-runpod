@@ -9,11 +9,12 @@ RUN apt-get update && apt-get install -y \
 
 RUN pip install uv -q
 
+# sglang-omni kur — kendi uyumlu sgl_kernel versiyonunu getirir
 RUN git clone https://github.com/sgl-project-dev/sglang-omni.git /workspace/sglang-omni && \
     cd /workspace/sglang-omni && \
     uv pip install ".[s2pro]" --system
 
-RUN pip install sgl-kernel --upgrade -q
+# NOT: sgl-kernel --upgrade YAPMA — sglang-omni uyumlu versiyonu zaten kurdu
 
 RUN git clone https://github.com/fishaudio/fish-speech /app/fish-speech && \
     cd /app/fish-speech && \
