@@ -9,12 +9,16 @@ RUN apt-get update && apt-get install -y \
 
 RUN pip install uv -q
 
-# sglang-omni kur — kendi uyumlu sgl_kernel versiyonunu getirir
+# sglang-omni kur
 RUN git clone https://github.com/sgl-project-dev/sglang-omni.git /workspace/sglang-omni && \
     cd /workspace/sglang-omni && \
     uv pip install ".[s2pro]" --system
 
-# NOT: sgl-kernel --upgrade YAPMA — sglang-omni uyumlu versiyonu zaten kurdu
+# sgl_kernel SM90 binary torch nightly ile derlenmis
+# maybe_as_int_slow_pathEv sembolunu iceren nightly kur
+RUN pip install --pre torch torchvision torchaudio \
+    --index-url https://download.pytorch.org/whl/nightly/cu124 \
+    --force-reinstall -q
 
 RUN git clone https://github.com/fishaudio/fish-speech /app/fish-speech && \
     cd /app/fish-speech && \
