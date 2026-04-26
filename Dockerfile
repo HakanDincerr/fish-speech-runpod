@@ -14,15 +14,12 @@ RUN git clone https://github.com/sgl-project-dev/sglang-omni.git /workspace/sgla
     cd /workspace/sglang-omni && \
     uv pip install ".[s2pro]" --system
 
-# sgl_kernel SM90 icin uyumlu torch nightly kur
-# maybe_as_int_slow_pathEv sembolunu iceren versiyon gerekli
-RUN pip install --pre torch torchvision torchaudio \
-    --index-url https://download.pytorch.org/whl/nightly/cu126 \
-    --force-reinstall -q || \
-    pip install --pre torch torchvision torchaudio \
-    --index-url https://download.pytorch.org/whl/nightly/cu121 \
-    --force-reinstall -q || \
-    echo "nightly kurulum basarisiz, devam ediliyor"
+# sgl_kernel'i eski versiyona pin et (torch 2.9.1 stable ile uyumlu)
+# maybe_as_int_slow_pathEv olmayan versiyon
+RUN pip install "sgl-kernel==0.0.9" --force-reinstall -q 2>/dev/null || \
+    pip install "sgl-kernel==0.1.0" --force-reinstall -q 2>/dev/null || \
+    pip install "sgl-kernel==0.0.8" --force-reinstall -q 2>/dev/null || \
+    echo "sgl_kernel pin basarisiz"
 
 RUN git clone https://github.com/fishaudio/fish-speech /app/fish-speech && \
     cd /app/fish-speech && \
